@@ -8,13 +8,8 @@ import imutils
 import time
 import matplotlib.pyplot as plt
 
-
-# construct the argument parse and parse the arguments
-ap = argparse.ArgumentParser()
-ap.add_argument("-v", "--video", default="high_n.MOV", 
-	help="path to the (optional) video file")
-args = vars(ap.parse_args())
-
+video = "high_n.MOV"
+PIXELS_PER_METER = 811.46
 
 # define the lower and upper boundaries of the "yellow"
 # ball in the HSV color space, then initialize the
@@ -27,11 +22,12 @@ speeds = []
 
 
 # video capture object
-vs = cv2.VideoCapture(args["video"])
+vs = cv2.VideoCapture(video)
 # allow the camera or video file to warm up
 time.sleep(2.0)
 # Get the frame rate
 frame_rate = vs.get(cv2.CAP_PROP_FPS)
+print(f'Frame rate: {frame_rate} fps')
 
 
 # keep looping
@@ -39,7 +35,7 @@ while True:
 	# grab the current frame
 	frame = vs.read()
 	# handle the frame from VideoCapture or VideoStream
-	frame = frame[1] if args.get("video", False) else frame
+	frame = frame[1] if video else frame
 	# if we are viewing a video and we did not grab a frame,
 	# then we have reached the end of the video
 	if frame is None:
@@ -82,7 +78,8 @@ while True:
 	# update the points queue
 	pts.append(center)
 	
-    	# loop over the set of tracked points
+	
+	# loop over the set of tracked points
 	frames_per_iteration = 1
 	for i in range(frames_per_iteration, len(pts), frames_per_iteration):
 		# if either of the tracked points are None, ignore them
@@ -90,56 +87,53 @@ while True:
 			continue
 		# otherwise, compute the thickness of the line and
 		# draw the connecting lines
-		thickness = int(np.sqrt(64 / float(i + 1)) * 2.5)
+		thickness = int(np.sqrt(256 / float(i + 1)) * 2.5)
 		cv2.line(frame, pts[i - frames_per_iteration], pts[i], (0, 0, 255), thickness)
-		distance = np.array(pts[i]) - np.array(pts[i-frames_per_iteration])
-		speed = distance * frame_rate / frames_per_iteration
-		# print(f'Speed: {speed} pixels/second')
-		speed_in_meters_per_second = speed / 811.46
-		# print(f'Speed: {speed_in_meters_per_second} m/s')
-		speeds.append(speed_in_meters_per_second)
-	# show the frame to our screen
+	
+	# # show the frame to our screen
 	# cv2.imshow("Frame", frame)
 	# key = cv2.waitKey(1) & 0xFF
 	# # if the 'q' key is pressed, stop the loop
 	# if key == ord("q"):
 	# 	break
-
-
 vs.release()
 # close all windows
 cv2.destroyAllWindows()
 
-speeds = np.vstack(speeds)
+# Plot the trajectory
+def interpolate_nones(A: np.ndarray):
+	ok = ~np.isnan(A)
+	xp = ok.ravel().nonzero()[0]
+	fp = A[~np.isnan(A)]
+	x  = np.isnan(A).ravel().nonzero()[0]
+	A[np.isnan(A)] = np.interp(x, xp, fp)
+	return A
 
-t = np.linspace(0, len(speeds), len(speeds))
-print(speeds.shape)
-vx = speeds[:,0]
-vy = speeds[:,1]
+x_coords = interpolate_nones(np.array([pt[0] if pt is not None else np.nan for pt in pts]))
+y_coords = interpolate_nones(np.array([pt[1] if pt is not None else np.nan for pt in pts]))
 
-# Fit a curve to the data
-degree = 7
-coefficients = np.polyfit(t, vx, degree)
-polynomial = np.poly1d(coefficients)
-vxs = polynomial(t)
-coefficients = np.polyfit(t, vy, degree)
-polynomial = np.poly1d(coefficients)
-vys = polynomial(t)
+vx = np.diff(x_coords) * frame_rate / PIXELS_PER_METER
+vy = np.diff(y_coords) * frame_rate / PIXELS_PER_METER
 
-plt.plot(t, vxs)
-plt.plot(t, vys)
+# plt.scatter(x_coords, y_coords)
+# plt.quiver(x_coords[:-1], y_coords[:-1], vx, vy, width=0.01, scale=0.01, scale_units='xy', angles='xy')
+# plt.xlabel('X')
+# plt.ylabel('Y')
+# plt.gca().invert_yaxis()  # Invert y axis to match image coordinates
+# plt.show()
+
+# Plot the speeds in x and y as separate sub plots
+plt.subplot(2, 1, 1)
+plt.plot(vx)
 plt.xlabel('Frame')
 plt.ylabel('Speed (m/s)')
-plt.show()
-
-# After the main loop
-x_coords = [pt[0] for pt in pts if pt is not None]
-y_coords = [pt[1] for pt in pts if pt is not None]
-
-plt.scatter(x_coords, y_coords)
-plt.xlabel('X')
-plt.ylabel('Y')
-plt.gca().invert_yaxis()  # Invert y axis to match image coordinates
+plt.title('Speed in x')
+plt.subplot(2, 1, 2)
+plt.plot(vy)
+plt.xlabel('Frame')
+plt.ylabel('Speed (m/s)')
+plt.title('Speed in y')
+plt.tight_layout()
 plt.show()
 
 
