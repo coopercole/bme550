@@ -6,13 +6,63 @@ import imutils
 import time
 import csv
 import matplotlib.pyplot as plt
+import os
 from scipy.optimize import curve_fit
 
-video = "high_n.MOV"
+
+root_video_folder = 'project_videos'
+
+# Initialize empty lists to store video files for each category
+high_videos = {'Normal':[], 'Pocket':[], 'Vertical':[]}
+medium_videos = {'Normal':[], 'Pocket':[], 'Vertical':[]}
+low_videos = {'Normal':[], 'Pocket':[], 'Vertical':[]}
+
+# list of tracked points
+tracked_pts = []
+
+
 PIXELS_PER_METER = 811.46
 SHOW_PLOTS = False
-PRINT_DATA = True
+PRINT_DATA = False
 WRITE_DATA_TO_CSV = True
+
+# Min HSV value in ROI: [20 42 91]
+# Max HSV value in ROI: [ 30 255 248]
+# define the lower and upper boundaries of the "yellow" ball in the HSV color space
+yellowLower = (20, 80, 100)
+yellowUpper = (30, 255, 248)
+
+
+def get_video_files():
+	# Iterate through the master folder
+	for root, dirs, files in os.walk(root_video_folder):
+		# Split the path into components
+		path_components = root.split(os.path.sep)
+		
+		# Check if the path has enough components to identify category and subcategory
+		if len(path_components) >= 3:
+			_, category, subcategory = path_components[-3:]
+			# Check if the current directory is a video subfolder
+			if subcategory in ['Normal', 'Pocket', 'Vertical']:
+				# Iterate through the files in the current subfolder
+				for file in files:
+					# Check if the file is a video file (you may need to adjust this condition)
+					if file.endswith(('.mp4', '.avi', '.MOV')):
+						# Create the full path to the video file
+						video_path = os.path.join(root, file)
+						
+						# Append the video file to the appropriate list based on the category
+						if category == 'high':
+							high_videos[subcategory].append(video_path)
+						elif category == 'medium':
+							medium_videos[subcategory].append(video_path)
+						elif category == 'low':
+							low_videos[subcategory].append(video_path)
+
+	print("Videos in 'high':", high_videos)
+	print("Videos in 'medium':", medium_videos)
+	print("Videos in 'low':", low_videos)
+
 
 def get_ball_hsv(frame):
 		# Select ROI
@@ -32,22 +82,6 @@ def get_ball_hsv(frame):
 	cv2.waitKey(0)
 	cv2.destroyAllWindows()
 	return min_color, max_color
-
-# Min HSV value in ROI: [20 42 91]
-# Max HSV value in ROI: [ 30 255 248]
-# define the lower and upper boundaries of the "yellow" ball in the HSV color space
-yellowLower = (20, 75, 90)
-yellowUpper = (30, 255, 248)
-# list of tracked points
-tracked_pts = []
-
-# video capture object
-cap = cv2.VideoCapture(video)
-# allow the camera or video file to warm up
-time.sleep(2.0)
-# Get the frame rate
-frame_rate = cap.get(cv2.CAP_PROP_FPS)
-print(f'Frame rate: {frame_rate} fps')
 
 # Track the ball
 def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=True):
@@ -117,11 +151,7 @@ def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=True):
 				break
 	return tracked_points
 
-tracked_pts = track_ball(cap, tracked_pts, yellowLower, yellowUpper)
-# cap.release()
-# cv2.destroyAllWindows()
-# print number of not None elements in tracked_pts
-print(f"Number of tracked points: {len([pt for pt in tracked_pts if pt is not None])}")
+
 
 # Plot the trajectory
 def interpolate_nones(A: np.ndarray):
@@ -132,13 +162,6 @@ def interpolate_nones(A: np.ndarray):
 	A[np.isnan(A)] = np.interp(x, xp, fp)
 	return A
 
-x_coords = interpolate_nones(np.array([pt[0] if pt is not None else np.nan for pt in tracked_pts]))
-y_coords = interpolate_nones(np.array([pt[1] if pt is not None else np.nan for pt in tracked_pts]))
-
-# print x_coords and y_coords
-if PRINT_DATA:
-	print(f'x_coords: {x_coords}')
-	print(f'y_coords: {y_coords}')
 
 def plot_trajectory(x1, y1, x2, y2, title1, title2):
 	if x2 is None or y2 is None:
@@ -159,23 +182,6 @@ def plot_trajectory(x1, y1, x2, y2, title1, title2):
 		plt.legend()
 		plt.show()
 
-# Find the index of the maximum y-coordinate
-max_index = np.argmax(y_coords)
-print(f"The maximum y-coordinate occurs at frame {max_index} with value {y_coords[max_index]}")
-
-# Split x_coords and y_coords into incoming and outgoing arrays
-incoming_x = x_coords[:max_index+1]
-incoming_y = y_coords[:max_index+1]
-outgoing_x = x_coords[max_index:]
-outgoing_y = y_coords[max_index:]
-
-# print incoming_x, incoming_y, outgoing_x, and outgoing_y
-if PRINT_DATA:
-	print(f'incoming_x: {incoming_x}')
-	print(f'incoming_y: {incoming_y}')
-	print(f'outgoing_x: {outgoing_x}')
-	print(f'outgoing_y: {outgoing_y}')
-
 
 def fit_line(x, y, order=1):
 	coeffs = np.polyfit(x, y, order)
@@ -187,13 +193,6 @@ def fit_parabola(x, y, order=2):
 	fitted = np.polyval(coeffs, x)
 	return fitted
 
-fitted_incoming_y = fit_parabola(incoming_x, incoming_y)
-fitted_outgoing_y = fit_parabola(outgoing_x, outgoing_y)
-
-# print fitted_incoming_y and fitted_outgoing_y
-if PRINT_DATA:
-	print(f'fitted_incoming_y: {fitted_incoming_y}')
-	print(f'fitted_outgoing_y: {fitted_outgoing_y}')
 
 def get_angle(x, y):
 	# Calculate the slope of the line between the first and last points
@@ -202,25 +201,6 @@ def get_angle(x, y):
 	angle = np.arctan(slope) * 180 / np.pi
 	return angle
 
-incoming_angle = np.abs(np.round(get_angle(incoming_x, fitted_incoming_y), 2))
-outgoing_angle = np.abs(np.round(get_angle(outgoing_x, fitted_outgoing_y), 2))
-
-if PRINT_DATA:
-	print(f"angle of incoming trajectory: {incoming_angle} degrees")
-	print(f"angle of outgoing trajectory: {outgoing_angle} degrees")
-
-# calculate Velocities
-incoming_vx = np.trim_zeros(np.diff(incoming_x) * frame_rate / PIXELS_PER_METER)
-incoming_vy = np.trim_zeros(np.diff(fitted_incoming_y) * frame_rate / PIXELS_PER_METER)
-outgoing_vx = np.trim_zeros(np.diff(outgoing_x) * frame_rate / PIXELS_PER_METER)
-outgoing_vy = np.trim_zeros(np.diff(fitted_outgoing_y) * frame_rate / PIXELS_PER_METER)
-
-# print incoming_vx, incoming_vy, outgoing_vx, and outgoing_vy
-if PRINT_DATA:
-	print(f'incoming_vx: {incoming_vx}')
-	print(f'incoming_vy: {incoming_vy}')
-	print(f'outgoing_vx: {outgoing_vx}')
-	print(f'outgoing_vy: {outgoing_vy}')
 
 def plot_speeds(x, y, title1, title2):
 	plt.figure()
@@ -246,33 +226,6 @@ def fit_curve(velocity_x, velocity_y, order):
 	fitted_vy = np.polyval(coeffs_vy, np.linspace(0, len(velocity_y), len(velocity_y)))
 	return fitted_vx, fitted_vy
 
-fitted_incoming_vx, fitted_incoming_vy = fit_curve(incoming_vx, incoming_vy, 5)
-fitted_outgoing_vx, fitted_outgoing_vy = fit_curve(outgoing_vx, outgoing_vy, 3)
-
-# print fitted_incoming_vx, fitted_incoming_vy, fitted_outgoing_vx, and fitted_outgoing_vy
-if PRINT_DATA:
-	print(f'fitted_incoming_vx: {fitted_incoming_vx}')
-	print(f'fitted_incoming_vy: {fitted_incoming_vy}')
-	print(f'fitted_outgoing_vx: {fitted_outgoing_vx}')
-	print(f'fitted_outgoing_vy: {fitted_outgoing_vy}')
-
-
-# Skip to the frame at max_index
-cap.set(cv2.CAP_PROP_POS_FRAMES, max_index)
-
-# Read the frame at max_index
-ret, impact_frame = cap.read()
-# # Check if the frame was successfully read
-# if ret:
-#     # Display the frame
-#     cv2.imshow('Frame at max_index', impact_frame)
-#     cv2.waitKey(0)
-#     cv2.destroyAllWindows()
-# Release the VideoCapture
-cap.release()
-
-# Initialize the list of points
-ball_distance2edge_points = []
 
 # Mouse callback function
 def click_event(event, x, y, flags, params):
@@ -311,6 +264,8 @@ def get_ball_distance_to_edge(impact_frame, points, return_type='x'):
 			return y_distance
 		else:
 			return distance_to_edge
+	else:
+		return -1
 		
 
 def pad_arrays(arrays):
@@ -322,45 +277,167 @@ def pad_arrays(arrays):
     
     return padded_arrays
 
-ball_x_distance = np.round(get_ball_distance_to_edge(impact_frame, ball_distance2edge_points) / PIXELS_PER_METER * 100, 2)
-print(f"Distance from ball to edge: {ball_x_distance} centimeters")
 
-# print the fitted speeds
-if PRINT_DATA:
-	print(f'Incoming fitted speed in x: {np.round(fitted_incoming_vx, 2)} m/s')
+get_video_files()
 
-if SHOW_PLOTS:
-	# plot the trajectory
-	plot_trajectory(x_coords, y_coords, None, None, 'Ball trajectory', None)
-	# plot the incoming and outoging trajectories
-	plot_trajectory(incoming_x, incoming_y, outgoing_x, outgoing_y, 'Incoming trajectory', 'Outgoing trajectory')
-	# plot the incoming and outgoing fitted trajectories
-	plot_trajectory(incoming_x, fitted_incoming_y, outgoing_x, fitted_outgoing_y, 'Incoming fit', 'Outgoing fit')
-	# Plot the speeds in x and y as separate sub plots
-	plot_speeds(incoming_vx, incoming_vy, 'Incoming speed in x', 'Incoming speed in y')
-	plot_speeds(outgoing_vx, outgoing_vy, 'Outgoing speed in x', 'Outgoing speed in y')
-	# Plot the fitted speeds in x and y as separate sub plots
-	plot_speeds(fitted_incoming_vx, fitted_incoming_vy, 'Incoming fitted speed in x', 'Incoming fitted speed in y')
-	plot_speeds(fitted_outgoing_vx, fitted_outgoing_vy, 'Outgoing fitted speed in x', 'Outgoing fitted speed in y')
+video_files = {'high_videos': high_videos, 'medium_videos': medium_videos, 'low_videos': low_videos}
 
-if WRITE_DATA_TO_CSV:
-	data_arrays = [fitted_incoming_vx, fitted_incoming_vy, fitted_outgoing_vx, fitted_outgoing_vy, [ball_x_distance], [incoming_angle], [outgoing_angle]]
-	padded_arrays = pad_arrays(data_arrays)
-	
-	
-	# Assuming fitted_incoming_vx, fitted_incoming_vy, ball_x_distance, incoming_angle, and outgoing_angle are defined
-	data = {
-		'fitted_incoming_vx': padded_arrays[0],
-		'fitted_incoming_vy': padded_arrays[1],
-		"fitted_outgoing_vx": padded_arrays[2],
-		"fitted_outgoing_vy": padded_arrays[3],
-		'ball_x_distance': padded_arrays[4],
-		'incoming_angle': padded_arrays[5],
-		'outgoing_angle': padded_arrays[6]
-	}
-	
-	# Create a DataFrame from the data
-	df = pd.DataFrame(data)
 
-	# Write the DataFrame to a CSV file
-	df.to_csv('output.csv', index=False)
+for video_type_name, video_type in video_files.items():
+	for shot_type, videos in video_type.items():
+		for video in videos:
+			# video capture object
+			cap = cv2.VideoCapture(video)
+
+			# allow the camera or video file to warm up
+			time.sleep(2.0)
+			# Get the frame rate
+			frame_rate = cap.get(cv2.CAP_PROP_FPS)
+			print(f'Frame rate: {frame_rate} fps')
+
+			tracked_pts = track_ball(cap, tracked_pts, yellowLower, yellowUpper)
+			# cap.release()
+			# cv2.destroyAllWindows()
+			# print number of not None elements in tracked_pts
+			print(f"Number of tracked points: {len([pt for pt in tracked_pts if pt is not None])}")
+
+			x_coords = interpolate_nones(np.array([pt[0] if pt is not None else np.nan for pt in tracked_pts]))
+			y_coords = interpolate_nones(np.array([pt[1] if pt is not None else np.nan for pt in tracked_pts]))
+
+
+			# print x_coords and y_coords
+			if PRINT_DATA:
+				print(f'x_coords: {x_coords}')
+				print(f'y_coords: {y_coords}')
+
+			# Find the index of the maximum y-coordinate
+			max_index = np.argmax(y_coords)
+			print(f"The maximum y-coordinate occurs at frame {max_index} with value {y_coords[max_index]}")
+
+			# Split x_coords and y_coords into incoming and outgoing arrays
+			incoming_x = x_coords[:max_index + 1]
+			incoming_y = y_coords[:max_index + 1]
+			outgoing_x = x_coords[max_index:]
+			outgoing_y = y_coords[max_index:]
+
+			# print incoming_x, incoming_y, outgoing_x, and outgoing_y
+			if PRINT_DATA:
+				print(f'incoming_x: {incoming_x}')
+				print(f'incoming_y: {incoming_y}')
+				print(f'outgoing_x: {outgoing_x}')
+				print(f'outgoing_y: {outgoing_y}')
+
+
+			fitted_incoming_y = fit_parabola(incoming_x, incoming_y)
+			fitted_outgoing_y = fit_parabola(outgoing_x, outgoing_y)
+
+			# print fitted_incoming_y and fitted_outgoing_y
+			if PRINT_DATA:
+				print(f'fitted_incoming_y: {fitted_incoming_y}')
+				print(f'fitted_outgoing_y: {fitted_outgoing_y}')
+
+
+			incoming_angle = np.abs(np.round(get_angle(incoming_x, fitted_incoming_y), 2))
+			outgoing_angle = np.abs(np.round(get_angle(outgoing_x, fitted_outgoing_y), 2))
+
+			if PRINT_DATA:
+				print(f"angle of incoming trajectory: {incoming_angle} degrees")
+				print(f"angle of outgoing trajectory: {outgoing_angle} degrees")
+
+			# calculate Velocities
+			incoming_vx = np.trim_zeros(np.diff(incoming_x) * frame_rate / PIXELS_PER_METER)
+			incoming_vy = np.trim_zeros(np.diff(fitted_incoming_y) * frame_rate / PIXELS_PER_METER)
+			outgoing_vx = np.trim_zeros(np.diff(outgoing_x) * frame_rate / PIXELS_PER_METER)
+			outgoing_vy = np.trim_zeros(np.diff(fitted_outgoing_y) * frame_rate / PIXELS_PER_METER)
+
+			# print incoming_vx, incoming_vy, outgoing_vx, and outgoing_vy
+			if PRINT_DATA:
+				print(f'incoming_vx: {incoming_vx}')
+				print(f'incoming_vy: {incoming_vy}')
+				print(f'outgoing_vx: {outgoing_vx}')
+				print(f'outgoing_vy: {outgoing_vy}')
+
+			fitted_incoming_vx, fitted_incoming_vy = fit_curve(incoming_vx, incoming_vy, 5)
+			fitted_outgoing_vx, fitted_outgoing_vy = fit_curve(outgoing_vx, outgoing_vy, 3)
+
+			# print fitted_incoming_vx, fitted_incoming_vy, fitted_outgoing_vx, and fitted_outgoing_vy
+			if PRINT_DATA:
+				print(f'fitted_incoming_vx: {fitted_incoming_vx}')
+				print(f'fitted_incoming_vy: {fitted_incoming_vy}')
+				print(f'fitted_outgoing_vx: {fitted_outgoing_vx}')
+				print(f'fitted_outgoing_vy: {fitted_outgoing_vy}')
+
+
+			# Skip to the frame at max_index
+			cap.set(cv2.CAP_PROP_POS_FRAMES, max_index)
+
+			# Read the frame at max_index
+			ret, impact_frame = cap.read()
+			# # Check if the frame was successfully read
+			# if ret:
+			#     # Display the frame
+			#     cv2.imshow('Frame at max_index', impact_frame)
+			#     cv2.waitKey(0)
+			#     cv2.destroyAllWindows()
+			# Release the VideoCapture
+			cap.release()
+
+			# Initialize the list of points
+			ball_distance2edge_points = []
+
+			ball_x_distance = np.round(get_ball_distance_to_edge(impact_frame, ball_distance2edge_points) / PIXELS_PER_METER * 100, 2)
+			print(f"Distance from ball to edge: {ball_x_distance} centimeters")
+
+			# print the fitted speeds
+			if PRINT_DATA:
+				print(f'Incoming fitted speed in x: {np.round(fitted_incoming_vx, 2)} m/s')
+
+			if SHOW_PLOTS:
+				# plot the trajectory
+				plot_trajectory(x_coords, y_coords, None, None, 'Ball trajectory', None)
+				# plot the incoming and outoging trajectories
+				plot_trajectory(incoming_x, incoming_y, outgoing_x, outgoing_y, 'Incoming trajectory', 'Outgoing trajectory')
+				# plot the incoming and outgoing fitted trajectories
+				plot_trajectory(incoming_x, fitted_incoming_y, outgoing_x, fitted_outgoing_y, 'Incoming fit', 'Outgoing fit')
+				# Plot the speeds in x and y as separate sub plots
+				plot_speeds(incoming_vx, incoming_vy, 'Incoming speed in x', 'Incoming speed in y')
+				plot_speeds(outgoing_vx, outgoing_vy, 'Outgoing speed in x', 'Outgoing speed in y')
+				# Plot the fitted speeds in x and y as separate sub plots
+				plot_speeds(fitted_incoming_vx, fitted_incoming_vy, 'Incoming fitted speed in x', 'Incoming fitted speed in y')
+				plot_speeds(fitted_outgoing_vx, fitted_outgoing_vy, 'Outgoing fitted speed in x', 'Outgoing fitted speed in y')
+
+
+
+
+			if WRITE_DATA_TO_CSV:
+				data_arrays = [fitted_incoming_vx, fitted_incoming_vy, fitted_outgoing_vx, fitted_outgoing_vy, [ball_x_distance], [incoming_angle], [outgoing_angle]]
+				padded_arrays = pad_arrays(data_arrays)
+				
+				
+				# Assuming fitted_incoming_vx, fitted_incoming_vy, ball_x_distance, incoming_angle, and outgoing_angle are defined
+				ball_data = {
+					'fitted_incoming_vx': padded_arrays[0],
+					'fitted_incoming_vy': padded_arrays[1],
+					"fitted_outgoing_vx": padded_arrays[2],
+					"fitted_outgoing_vy": padded_arrays[3],
+					'ball_x_distance': padded_arrays[4],
+					'incoming_angle': padded_arrays[5],
+					'outgoing_angle': padded_arrays[6]
+				}
+				
+				#print("Hello {} {}, hope you're well!".format(first_name,last_name))
+
+				# Create a DataFrame from the data
+				video_name_df = pd.DataFrame({"{} {}".format(video_type_name, shot_type): [video]})
+				ball_data_df = pd.DataFrame(ball_data)
+				empty_df = pd.DataFrame(columns=range(8))
+
+				# Write the DataFrame to a CSV file
+				video_name_df.to_csv(video_type_name + '.csv', index=False, mode='a')
+				ball_data_df.to_csv(video_type_name + '.csv', index=False, mode='a')
+				empty_df.loc[0] = [None] * 8
+				empty_df.to_csv(video_type_name + '.csv', mode='a', header=False, index=False)
+				empty_df.to_csv(video_type_name + '.csv', mode='a', header=False, index=False)
+				empty_df.to_csv(video_type_name + '.csv', mode='a', header=False, index=False)
+
+				tracked_pts = []
