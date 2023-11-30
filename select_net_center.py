@@ -1,4 +1,5 @@
 import cv2
+import imutils
 
 # Global variable to track if the mouse click has occurred
 mouse_clicked = False
@@ -13,7 +14,7 @@ def click_event(event, x, y, flags, param):
         print("Selected Point: ({}, {})".format(x, y))
 
 # Path to the video file
-video_path = 'ball-slo.MOV'
+video_path = 'project_videos\\high\\Normal\\20231116_211200000_iOS.MOV'
 
 # Open the video file
 cap = cv2.VideoCapture(video_path)
@@ -25,6 +26,8 @@ if not cap.isOpened():
 
 # Read the first frame
 ret, frame = cap.read()
+
+frame = imutils.resize(frame, width=600)
 
 # Check if the frame is read successfully
 if not ret:
@@ -47,6 +50,7 @@ mouse_clicked = False
 # Play the video from the next frame until the end
 while cap.isOpened():
     ret, frame = cap.read()
+    #frame = imutils.resize(frame, width=600)
     if not ret:
         break
 

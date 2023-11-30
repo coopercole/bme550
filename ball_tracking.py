@@ -21,16 +21,28 @@ low_videos = {'Normal':[], 'Pocket':[], 'Vertical':[]}
 tracked_pts = []
 
 
-PIXELS_PER_METER = 811.46
-SHOW_PLOTS = False
+NET_Y_COORD = 590
+PIXELS_PER_METER = 894 # Points (546, 591) and (1291, 582) were selected on original image. x-diff is 745px / 3 ft => 894px / 1 m
+RESIZED_IMG_PIXELS_PER_METER = 894 # Points (170, 185) and (404, 181) were selected on resized image. x-diff is 234px / 3 ft => 255.84px / 1 m
+
+SHOW_PLOTS = True
 PRINT_DATA = False
 WRITE_DATA_TO_CSV = True
 
 # Min HSV value in ROI: [20 42 91]
 # Max HSV value in ROI: [ 30 255 248]
 # define the lower and upper boundaries of the "yellow" ball in the HSV color space
+
+# yellowLower = (20, 80, 100)
+# yellowUpper = (30, 255, 248)
+
+
+# TEST VALUES
 yellowLower = (20, 80, 100)
 yellowUpper = (30, 255, 248)
+
+# Min HSV value in ROI: [ 21 214 202]
+# Max HSV value in ROI: [ 25 255 245]
 
 
 def get_video_files():
@@ -96,15 +108,15 @@ def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=True):
 			break
 		# resize the frame, blur it, and convert it to the HSV
 		# color space
-		frame = imutils.resize(frame, width=600)
+		#frame = imutils.resize(frame, width=600)
 		blurred = cv2.GaussianBlur(frame, (11, 11), 0)
 		hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
 		# construct a mask for the color "yellow", then perform
 		# a series of dilations and erosions to remove any small
 		# blobs left in the mask
 		mask = cv2.inRange(hsv, mask_lower, mask_upper)
-		mask = cv2.erode(mask, None, iterations=5)
-		mask = cv2.dilate(mask, None, iterations=3)
+		mask = cv2.erode(mask, None, iterations=10)
+		mask = cv2.dilate(mask, None, iterations=8)
 		cv2.imshow("mask", mask)
 		
 		# find contours in the mask and initialize the current
@@ -296,6 +308,10 @@ for video_type_name, video_type in video_files.items():
 			print(f'Frame rate: {frame_rate} fps')
 
 			tracked_pts = track_ball(cap, tracked_pts, yellowLower, yellowUpper)
+   			# print tracked_pts
+			if PRINT_DATA:
+				print(f'tracked_pts: {tracked_pts}')
+    
 			# cap.release()
 			# cv2.destroyAllWindows()
 			# print number of not None elements in tracked_pts
@@ -313,6 +329,10 @@ for video_type_name, video_type in video_files.items():
 			# Find the index of the maximum y-coordinate
 			max_index = np.argmax(y_coords)
 			print(f"The maximum y-coordinate occurs at frame {max_index} with value {y_coords[max_index]}")
+   
+   
+			# Find the index of the impact frame
+			impact_index = np.argwhere(y_coords > NET_Y_COORD)
 
 			# Split x_coords and y_coords into incoming and outgoing arrays
 			incoming_x = x_coords[:max_index + 1]
@@ -345,10 +365,10 @@ for video_type_name, video_type in video_files.items():
 				print(f"angle of outgoing trajectory: {outgoing_angle} degrees")
 
 			# calculate Velocities
-			incoming_vx = np.trim_zeros(np.diff(incoming_x) * frame_rate / PIXELS_PER_METER)
-			incoming_vy = np.trim_zeros(np.diff(fitted_incoming_y) * frame_rate / PIXELS_PER_METER)
-			outgoing_vx = np.trim_zeros(np.diff(outgoing_x) * frame_rate / PIXELS_PER_METER)
-			outgoing_vy = np.trim_zeros(np.diff(fitted_outgoing_y) * frame_rate / PIXELS_PER_METER)
+			incoming_vx = np.trim_zeros(np.diff(incoming_x) * frame_rate / RESIZED_IMG_PIXELS_PER_METER)
+			incoming_vy = np.trim_zeros(np.diff(fitted_incoming_y) * frame_rate / RESIZED_IMG_PIXELS_PER_METER)
+			outgoing_vx = np.trim_zeros(np.diff(outgoing_x) * frame_rate / RESIZED_IMG_PIXELS_PER_METER)
+			outgoing_vy = np.trim_zeros(np.diff(fitted_outgoing_y) * frame_rate / RESIZED_IMG_PIXELS_PER_METER)
 
 			# print incoming_vx, incoming_vy, outgoing_vx, and outgoing_vy
 			if PRINT_DATA:
