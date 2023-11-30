@@ -10,7 +10,8 @@ from scipy.optimize import curve_fit
 
 video = "high_n.MOV"
 PIXELS_PER_METER = 811.46
-SHOW_PLOTS = True
+SHOW_PLOTS = False
+PRINT_DATA = False
 WRITE_DATA_TO_CSV = True
 
 def get_ball_hsv(frame):
@@ -32,9 +33,11 @@ def get_ball_hsv(frame):
 	cv2.destroyAllWindows()
 	return min_color, max_color
 
+# Min HSV value in ROI: [20 42 91]
+# Max HSV value in ROI: [ 30 255 248]
 # define the lower and upper boundaries of the "yellow" ball in the HSV color space
-yellowLower = (20, 200, 190)
-yellowUpper = (28, 255, 248)
+yellowLower = (20, 75, 90)
+yellowUpper = (30, 255, 248)
 # list of tracked points
 tracked_pts = []
 
@@ -44,10 +47,10 @@ cap = cv2.VideoCapture(video)
 time.sleep(2.0)
 # Get the frame rate
 frame_rate = cap.get(cv2.CAP_PROP_FPS)
-# print(f'Frame rate: {frame_rate} fps')
+print(f'Frame rate: {frame_rate} fps')
 
 # Track the ball
-def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=False):
+def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=True):
 	while True:
 		# grab the current frame
 		frame = video.read()
@@ -66,9 +69,9 @@ def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=False):
 		# a series of dilations and erosions to remove any small
 		# blobs left in the mask
 		mask = cv2.inRange(hsv, mask_lower, mask_upper)
-		mask = cv2.erode(mask, None, iterations=3)
+		mask = cv2.erode(mask, None, iterations=5)
 		mask = cv2.dilate(mask, None, iterations=3)
-		# cv2.imshow("mask", mask)
+		cv2.imshow("mask", mask)
 		
 		# find contours in the mask and initialize the current
 		# (x, y) center of the ball
@@ -76,6 +79,7 @@ def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=False):
 			cv2.CHAIN_APPROX_SIMPLE)
 		cnts = imutils.grab_contours(cnts)
 		center = None
+		
 		# only proceed if at least one contour was found
 		if len(cnts) > 0:
 			# find the largest contour in the mask, then use
@@ -86,7 +90,7 @@ def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=False):
 			M = cv2.moments(c)
 			center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
 			# only proceed if the radius meets a minimum size
-			if radius > 10:
+			if radius > 20:
 				# draw the circle and centroid on the frame,
 				# then update the list of tracked points
 				cv2.circle(frame, (int(t), int(y)), int(radius),
@@ -95,7 +99,7 @@ def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=False):
 		# update the points queue
 		tracked_points.append(center)
 
-			# loop over the set of tracked points
+		# loop over the set of tracked points
 		for i in range(1, len(tracked_points)):
 			# if either of the tracked points are None, ignore them
 			if tracked_points[i - 1] is None or tracked_points[i] is None:
@@ -104,6 +108,7 @@ def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=False):
 			# draw the connecting lines
 			thickness = int(np.sqrt(512 / float(i + 1)) * 2.5)
 			cv2.line(frame, tracked_points[i - 1], tracked_points[i], (0, 0, 255), thickness)
+		
 		if show_video:
 			# show the frame to our screen
 			cv2.imshow("Frame", frame)
@@ -115,6 +120,8 @@ def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=False):
 tracked_pts = track_ball(cap, tracked_pts, yellowLower, yellowUpper)
 # cap.release()
 # cv2.destroyAllWindows()
+# print number of not None elements in tracked_pts
+print(f"Number of tracked points: {len([pt for pt in tracked_pts if pt is not None])}")
 
 # Plot the trajectory
 def interpolate_nones(A: np.ndarray):
@@ -127,6 +134,11 @@ def interpolate_nones(A: np.ndarray):
 
 x_coords = interpolate_nones(np.array([pt[0] if pt is not None else np.nan for pt in tracked_pts]))
 y_coords = interpolate_nones(np.array([pt[1] if pt is not None else np.nan for pt in tracked_pts]))
+
+# print x_coords and y_coords
+if PRINT_DATA:
+	print(f'x_coords: {x_coords}')
+	print(f'y_coords: {y_coords}')
 
 def plot_trajectory(x1, y1, x2, y2, title1, title2):
 	if x2 is None or y2 is None:
@@ -157,6 +169,14 @@ incoming_y = y_coords[:max_index+1]
 outgoing_x = x_coords[max_index:]
 outgoing_y = y_coords[max_index:]
 
+# print incoming_x, incoming_y, outgoing_x, and outgoing_y
+if PRINT_DATA:
+	print(f'incoming_x: {incoming_x}')
+	print(f'incoming_y: {incoming_y}')
+	print(f'outgoing_x: {outgoing_x}')
+	print(f'outgoing_y: {outgoing_y}')
+
+
 def fit_line(x, y, order=1):
 	coeffs = np.polyfit(x, y, order)
 	fitted = np.polyval(coeffs, x)
@@ -170,6 +190,11 @@ def fit_parabola(x, y, order=2):
 fitted_incoming_y = fit_parabola(incoming_x, incoming_y)
 fitted_outgoing_y = fit_parabola(outgoing_x, outgoing_y)
 
+# print fitted_incoming_y and fitted_outgoing_y
+if PRINT_DATA:
+	print(f'fitted_incoming_y: {fitted_incoming_y}')
+	print(f'fitted_outgoing_y: {fitted_outgoing_y}')
+
 def get_angle(x, y):
 	# Calculate the slope of the line between the first and last points
 	slope = (y[-1] - y[0]) / (x[-1] - x[0])
@@ -177,16 +202,25 @@ def get_angle(x, y):
 	angle = np.arctan(slope) * 180 / np.pi
 	return angle
 
-incoming_angle = np.abs(np.round(get_angle(incoming_x, incoming_y), 2))
-outgoing_angle = np.abs(np.round(get_angle(outgoing_x, outgoing_y), 2))
+incoming_angle = np.abs(np.round(get_angle(incoming_x, fitted_incoming_y), 2))
+outgoing_angle = np.abs(np.round(get_angle(outgoing_x, fitted_outgoing_y), 2))
 
-print(f"angle of incoming trajectory: {incoming_angle} degrees")
-print(f"angle of outgoing trajectory: {outgoing_angle} degrees")
+if PRINT_DATA:
+	print(f"angle of incoming trajectory: {incoming_angle} degrees")
+	print(f"angle of outgoing trajectory: {outgoing_angle} degrees")
 
+# calculate Velocities
 incoming_vx = np.trim_zeros(np.diff(incoming_x) * frame_rate / PIXELS_PER_METER)
-incoming_vy = np.trim_zeros(np.diff(incoming_y) * frame_rate / PIXELS_PER_METER)
+incoming_vy = np.trim_zeros(np.diff(fitted_incoming_y) * frame_rate / PIXELS_PER_METER)
 outgoing_vx = np.trim_zeros(np.diff(outgoing_x) * frame_rate / PIXELS_PER_METER)
-outgoing_vy = np.trim_zeros(np.diff(outgoing_y) * frame_rate / PIXELS_PER_METER)
+outgoing_vy = np.trim_zeros(np.diff(fitted_outgoing_y) * frame_rate / PIXELS_PER_METER)
+
+# print incoming_vx, incoming_vy, outgoing_vx, and outgoing_vy
+if PRINT_DATA:
+	print(f'incoming_vx: {incoming_vx}')
+	print(f'incoming_vy: {incoming_vy}')
+	print(f'outgoing_vx: {outgoing_vx}')
+	print(f'outgoing_vy: {outgoing_vy}')
 
 def plot_speeds(x, y, title1, title2):
 	plt.figure()
@@ -213,7 +247,15 @@ def fit_curve(velocity_x, velocity_y, order):
 	return fitted_vx, fitted_vy
 
 fitted_incoming_vx, fitted_incoming_vy = fit_curve(incoming_vx, incoming_vy, 5)
-fitted_outgoing_vx, fitted_outgoing_vy = fit_curve(outgoing_vx, outgoing_vy, 1)
+fitted_outgoing_vx, fitted_outgoing_vy = fit_curve(outgoing_vx, outgoing_vy, 3)
+
+# print fitted_incoming_vx, fitted_incoming_vy, fitted_outgoing_vx, and fitted_outgoing_vy
+if PRINT_DATA:
+	print(f'fitted_incoming_vx: {fitted_incoming_vx}')
+	print(f'fitted_incoming_vy: {fitted_incoming_vy}')
+	print(f'fitted_outgoing_vx: {fitted_outgoing_vx}')
+	print(f'fitted_outgoing_vy: {fitted_outgoing_vy}')
+
 
 # Skip to the frame at max_index
 cap.set(cv2.CAP_PROP_POS_FRAMES, max_index)
@@ -274,7 +316,8 @@ ball_x_distance = np.round(get_ball_distance_to_edge(impact_frame, ball_distance
 print(f"Distance from ball to edge: {ball_x_distance} centimeters")
 
 # print the fitted speeds
-print(f'Incoming fitted speed in x: {np.round(fitted_incoming_vx, 2)} m/s')
+if PRINT_DATA:
+	print(f'Incoming fitted speed in x: {np.round(fitted_incoming_vx, 2)} m/s')
 
 if SHOW_PLOTS:
 	# plot the trajectory
@@ -295,6 +338,8 @@ if WRITE_DATA_TO_CSV:
 	data = {
 		'fitted_incoming_vx': [fitted_incoming_vx],
 		'fitted_incoming_vy': [fitted_incoming_vy],
+		"fitted_outgoing_vx": [fitted_outgoing_vx],
+		"fitted_outgoing_vy": [fitted_outgoing_vy],
 		'ball_x_distance': [ball_x_distance],
 		'incoming_angle': [incoming_angle],
 		'outgoing_angle': [outgoing_angle]
