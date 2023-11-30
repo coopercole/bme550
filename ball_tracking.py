@@ -164,7 +164,6 @@ def track_ball(video, tracked_points, mask_lower, mask_upper, show_video=True):
 	return tracked_points
 
 
-
 # Plot the trajectory
 def interpolate_nones(A: np.ndarray):
 	ok = ~np.isnan(A)
@@ -213,7 +212,6 @@ def get_angle(x, y):
 	angle = np.arctan(slope) * 180 / np.pi
 	return angle
 
-
 def plot_speeds(x, y, title1, title2):
 	plt.figure()
 	plt.subplot(2, 1, 1)
@@ -238,28 +236,29 @@ def fit_curve(velocity_x, velocity_y, order):
 	fitted_vy = np.polyval(coeffs_vy, np.linspace(0, len(velocity_y), len(velocity_y)))
 	return fitted_vx, fitted_vy
 
-
 # Mouse callback function
-def click_event(event, x, y, flags, params):
+def click_event(event, x, y, flags, params, click_coordinates):
     # If the left mouse button was clicked, record the (x, y) coordinates
     if event == cv2.EVENT_LBUTTONDOWN:
-        ball_distance2edge_points.append((x, y))
+        click_coordinates.append((x, y))
 
         # Draw a circle where the user clicked
         cv2.circle(impact_frame, (x, y), 5, (0, 255, 0), -1)
 
         # If two points have been clicked, draw a line between them
-        if len(ball_distance2edge_points) == 2:
-            cv2.line(impact_frame, ball_distance2edge_points[0], ball_distance2edge_points[1], (0, 255, 0), 2)
+        if len(click_coordinates) == 2:
+            cv2.line(impact_frame, click_coordinates[0], click_coordinates[1], (0, 255, 0), 2)
 
         # Display the image
         cv2.imshow('image', impact_frame)
 
+
 # Calculate the distance between two points
-def get_ball_distance_to_edge(impact_frame, points, return_type='x'):
+def get_ball_distance_to_edge(impact_frame, return_type='x'):
 	# Display the image and set the mouse callback function
+	points = []
 	cv2.imshow('image', impact_frame)
-	cv2.setMouseCallback('image', click_event)
+	cv2.setMouseCallback('image', lambda *args: click_event(*args, click_coordinates=points))
 
 	# Wait for a key press and then close the windows
 	cv2.waitKey(0)
@@ -268,8 +267,8 @@ def get_ball_distance_to_edge(impact_frame, points, return_type='x'):
 	# If two points were clicked, calculate and print the distance between them
 	if len(points) == 2:
 		distance_to_edge = np.sqrt((points[1][0] - points[0][0])**2 + (points[1][1] - points[0][1])**2)
-		x_distance = np.abs(points[1][0] - points[0][0])
-		y_distance = np.abs(points[1][1] - points[0][1])
+		x_distance = points[1][0] - points[0][0]
+		y_distance = points[1][1] - points[0][1]
 		if return_type == 'x':
 			return x_distance
 		elif return_type == 'y':
@@ -403,9 +402,7 @@ for video_type_name, video_type in video_files.items():
 			cap.release()
 
 			# Initialize the list of points
-			ball_distance2edge_points = []
-
-			ball_x_distance = np.round(get_ball_distance_to_edge(impact_frame, ball_distance2edge_points) / PIXELS_PER_METER * 100, 2)
+			ball_x_distance = np.round(get_ball_distance_to_edge(impact_frame) / PIXELS_PER_METER * 100, 2)
 			print(f"Distance from ball to edge: {ball_x_distance} centimeters")
 
 			# print the fitted speeds
