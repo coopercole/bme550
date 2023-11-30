@@ -11,7 +11,7 @@ from scipy.optimize import curve_fit
 video = "high_n.MOV"
 PIXELS_PER_METER = 811.46
 SHOW_PLOTS = False
-PRINT_DATA = False
+PRINT_DATA = True
 WRITE_DATA_TO_CSV = True
 
 def get_ball_hsv(frame):
@@ -161,7 +161,7 @@ def plot_trajectory(x1, y1, x2, y2, title1, title2):
 
 # Find the index of the maximum y-coordinate
 max_index = np.argmax(y_coords)
-print(f"The maximum y-coordinate occurs at frame {max_index}")
+print(f"The maximum y-coordinate occurs at frame {max_index} with value {y_coords[max_index]}")
 
 # Split x_coords and y_coords into incoming and outgoing arrays
 incoming_x = x_coords[:max_index+1]
@@ -311,6 +311,16 @@ def get_ball_distance_to_edge(impact_frame, points, return_type='x'):
 			return y_distance
 		else:
 			return distance_to_edge
+		
+
+def pad_arrays(arrays):
+    # Find the maximum length among the arrays
+    max_length = max(len(arr) for arr in arrays)
+    
+    # Pad each array with -1s to match the maximum length
+    padded_arrays = [np.pad(arr, (0, max_length - len(arr)), constant_values=-1) for arr in arrays]
+    
+    return padded_arrays
 
 ball_x_distance = np.round(get_ball_distance_to_edge(impact_frame, ball_distance2edge_points) / PIXELS_PER_METER * 100, 2)
 print(f"Distance from ball to edge: {ball_x_distance} centimeters")
@@ -334,17 +344,21 @@ if SHOW_PLOTS:
 	plot_speeds(fitted_outgoing_vx, fitted_outgoing_vy, 'Outgoing fitted speed in x', 'Outgoing fitted speed in y')
 
 if WRITE_DATA_TO_CSV:
+	data_arrays = [fitted_incoming_vx, fitted_incoming_vy, fitted_outgoing_vx, fitted_outgoing_vy, [ball_x_distance], [incoming_angle], [outgoing_angle]]
+	padded_arrays = pad_arrays(data_arrays)
+	
+	
 	# Assuming fitted_incoming_vx, fitted_incoming_vy, ball_x_distance, incoming_angle, and outgoing_angle are defined
 	data = {
-		'fitted_incoming_vx': [fitted_incoming_vx],
-		'fitted_incoming_vy': [fitted_incoming_vy],
-		"fitted_outgoing_vx": [fitted_outgoing_vx],
-		"fitted_outgoing_vy": [fitted_outgoing_vy],
-		'ball_x_distance': [ball_x_distance],
-		'incoming_angle': [incoming_angle],
-		'outgoing_angle': [outgoing_angle]
+		'fitted_incoming_vx': padded_arrays[0],
+		'fitted_incoming_vy': padded_arrays[1],
+		"fitted_outgoing_vx": padded_arrays[2],
+		"fitted_outgoing_vy": padded_arrays[3],
+		'ball_x_distance': padded_arrays[4],
+		'incoming_angle': padded_arrays[5],
+		'outgoing_angle': padded_arrays[6]
 	}
-
+	
 	# Create a DataFrame from the data
 	df = pd.DataFrame(data)
 
