@@ -5,6 +5,11 @@ import imutils
 mouse_clicked = False
 selected_point = None
 
+START_Y_CROP = 230
+END_Y_CROP = 686
+START_X_CROP = 432
+END_X_CROP = 1432
+
 # Function to handle mouse events
 def click_event(event, x, y, flags, param):
     global mouse_clicked, selected_point
@@ -26,8 +31,9 @@ if not cap.isOpened():
 
 # Read the first frame
 ret, frame = cap.read()
+#frame = frame[START_Y_CROP:END_Y_CROP, START_X_CROP:END_X_CROP]
 
-frame = imutils.resize(frame, width=600)
+#frame = imutils.resize(frame, width=600)
 
 # Check if the frame is read successfully
 if not ret:
@@ -50,7 +56,7 @@ mouse_clicked = False
 # Play the video from the next frame until the end
 while cap.isOpened():
     ret, frame = cap.read()
-    #frame = imutils.resize(frame, width=600)
+    frame = frame[START_Y_CROP:END_Y_CROP, START_X_CROP:END_X_CROP]
     if not ret:
         break
 
