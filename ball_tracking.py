@@ -300,19 +300,12 @@ def pad_arrays(arrays):
 
 def get_distance_in_frame(cap, frame_index):
     # Skip to the frame at max_index
-    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-
+    try:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+    except Exception as e:
+        print(f"Error setting frame index: {e}")
     # Read the frame at max_index
     ret, frame = cap.read()
-    # # Check if the frame was successfully read
-    # if ret:
-    #     # Display the frame
-    #     cv2.imshow('Frame at max_index', impact_frame)
-    #     cv2.waitKey(0)
-    #     cv2.destroyAllWindows()
-
-    #crop the frame
-    #frame = frame[START_Y_CROP:END_Y_CROP, START_X_CROP:END_X_CROP]
 
     # Initialize the list of points
     ball_x_distance = np.round(get_ball_distance_to_edge(frame) / PIXELS_PER_METER * 100, 2)
@@ -350,27 +343,19 @@ get_video_files()
 
 video_files = {'high_videos': high_videos, 'medium_videos': medium_videos, 'low_videos': low_videos}
 
-cap = cv2.VideoCapture("project_videos\\high\Pocket\\20231116_211211000_iOS.MOV")
-cap.set(cv2.CAP_PROP_POS_FRAMES, 141)
-ret, frame = cap.read()
-cv2.imshow('image', frame)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
-
-
-
 
 for video_type_name, video_type in video_files.items():
     for shot_type, videos in video_type.items():
         for video in videos:
             # video capture object
-            cap = cv2.VideoCapture("project_videos\\high\Pocket\\20231116_211211000_iOS.MOV")
+            cap = cv2.VideoCapture(video)
 
             # allow the camera or video file to warm up
             time.sleep(2.0)
             # Get the frame rate
             frame_rate = cap.get(cv2.CAP_PROP_FPS)
             print(f'Frame rate: {frame_rate} fps')
+
 
             tracked_pts = track_ball(cap, tracked_pts, yellowLower, yellowUpper)
                # print tracked_pts
@@ -466,8 +451,14 @@ for video_type_name, video_type in video_files.items():
             median_outgoing_vy = np.median(fitted_outgoing_vy[:5])
 
 
+            # Release and reopen the video file before getting the distance from ball center to rim edge
+            cap.release()
+            cap = cv2.VideoCapture(video)
             inbound_x_distance = get_distance_in_frame(cap, impact_start_index)
             print(f"Distance from ball to edge on impact: {inbound_x_distance} centimeters")
+            cap.release()
+            
+            cap = cv2.VideoCapture(video)
             outbound_x_distance = get_distance_in_frame(cap, impact_end_index)
             print(f"Distance from ball to edge on exit: {outbound_x_distance} centimeters")
 
